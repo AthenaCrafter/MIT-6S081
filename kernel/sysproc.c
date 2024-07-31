@@ -79,8 +79,34 @@ sys_sleep(void)
 #ifdef LAB_PGTBL
 int
 sys_pgaccess(void)
-{
-  // lab pgtbl: your code here.
+{ 
+  uint64 startva, dstva, res = 0L;
+  const uint checkmax = 64;
+  int checknum;
+
+  if(argaddr(0, &startva) < 0)
+    return -1;
+  if(argint(1, &checknum) < 0) 
+    return -1;
+  if(checknum > checkmax) 
+    checknum = checkmax;
+  if(argaddr(2, &dstva) < 0) 
+    return -1;
+  
+  uint64 va = PGROUNDDOWN(startva);
+
+  pte_t *pte;
+  for(int i = 0; i < checknum; ++i) {
+    pte = walk(myproc()->pagetable, va, 0);
+    if(*pte & PTE_A) 
+      res |= (1 << i);
+    *pte &= ~PTE_A;
+    va += PGSIZE;
+  }
+
+  if(copyout(myproc()->pagetable, dstva, (char*)&res, (uint64)(sizeof(res))) < 0)
+    return -1;
+
   return 0;
 }
 #endif
