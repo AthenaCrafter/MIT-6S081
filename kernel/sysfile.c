@@ -283,6 +283,31 @@ create(char *path, short type, short major, short minor)
   return ip;
 }
 
+struct inode*
+follow_symlink(struct inode* ip, int times)
+{
+  char newpath[MAXPATH];
+
+  if(times >= 10) {
+    iunlock(ip);
+    printf("follow too many times, maybe a cycle\n");
+    return 0;
+  }
+
+  if(readi(ip, 0, (uint64)newpath, 0, sizeof(newpath)) == sizeof(newpath)) {
+    iunlock(ip);
+
+    if((ip = namei(newpath)) == 0)
+      return ip;
+
+    ilock(ip);
+    if(ip->type == T_FILE) 
+      return ip;
+    return follow_symlink(ip, times+1);
+  }
+  return 0;
+}
+
 uint64
 sys_open(void)
 {
@@ -311,6 +336,14 @@ sys_open(void)
     ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
+      end_op();
+      return -1;
+    }
+  }
+
+  if(ip->type == T_SYMLINK && omode != O_NOFOLLOW) {
+    ip = follow_symlink(ip, 0);
+    if(ip == 0) {
       end_op();
       return -1;
     }
@@ -488,30 +521,25 @@ sys_pipe(void)
 uint64
 sys_symlink(void) 
 {
-  char target[MAXPATH], name[MAXPATH], path[MAXPATH];
-
-  struct inode *dp, *ip;
+  char target[MAXPATH], path[MAXPATH];
+  struct inode *ip;
 
   if(argstr(0,target,MAXPATH) < 0 || argstr(1,path,MAXPATH) < 0) 
     return -1;
 
-  if((dp = nameiparent(path,name)) < 0)
-    return -1;
-  
-  ip = ialloc(dp->dev,T_SYMLINK);
+  begin_op();
 
-  ilock(dp);
-  if(dirlink(dp,name,ip->inum) < 0) {
-    iunlockput(dp);
+  if((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+    end_op();
     return -1;
   }
-  iunlockput(dp);
 
-  ilock(ip);
-  if(writei(ip, 0, (uint64)target, 0, sizeof(target)) < sizeof(target)) {
+  if(writei(ip, 0, (uint64)target, 0, sizeof(target)) != sizeof(target)) {
     iunlockput(ip);
+    end_op();
     return -1;
   }
   iunlockput(ip);
+  end_op();
   return 0;
 }

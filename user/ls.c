@@ -41,6 +41,8 @@ ls(char *path)
     return;
   }
 
+  printf("name\ttype\tinode\tsize\n");
+
   switch(st.type){
   case T_FILE:
     printf("%s %d %d %l\n", fmtname(path), st.type, st.ino, st.size);
