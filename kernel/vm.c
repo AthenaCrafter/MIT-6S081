@@ -1,9 +1,11 @@
-#include "param.h"
 #include "types.h"
+#include "param.h"
 #include "memlayout.h"
 #include "elf.h"
 #include "riscv.h"
+#include "spinlock.h"
 #include "defs.h"
+#include "proc.h"
 #include "fs.h"
 
 /*
@@ -303,22 +305,25 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
+
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+
+    // clean parent's pte flag PTE_W & add parent's pte flag PTE_COW
+    *pte = (*pte | PTE_COW) & ~PTE_W;
+
+    // child process map to parent process's physical address pa
+    // grant child's pte flag permission the same as parent
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       goto err;
     }
+    kaddrefcnt((void*)pa);
   }
   return 0;
 
@@ -340,6 +345,58 @@ uvmclear(pagetable_t pagetable, uint64 va)
   *pte &= ~PTE_U;
 }
 
+// copy-on-write fault handler
+int
+cowhandler(uint64 va)
+{
+  struct proc *p;
+  uint64 pa;
+  uint flags;
+  pte_t *pte;
+  char *mem;
+
+  p = myproc();
+
+  if(va >= MAXVA) {
+    printf("cow: faulting virtual address exceeds MAXVA\n");
+    return -1;
+  }
+  va = PGROUNDDOWN(va);
+
+  // find the page table entry (pte) of the faulting virtual address (va)
+  if((pte = walk(p->pagetable, va, 0)) == 0) {
+    printf("cow: the page table entry (pte) of va does not exist\n");
+    return -1;
+  }
+
+  // verify if the page is marked as Copy-On-Write (COW)
+  if((*pte & PTE_COW) == 0) {
+    // printf("cow: attempted COW operation on non-COW page\n");
+    return 1;
+  }
+
+  // copy contents from original page to new page, then free the original page
+  if((mem = kalloc()) == 0) {
+    printf("cow: failed to allocate new physical page\n");
+    return -1;
+  }
+  pa = PTE2PA(*pte);
+  memmove(mem, (char*)pa, PGSIZE);
+  kfree((void*)pa);
+
+  // clear COW flag, grant write permission
+  flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
+
+  // remap virtual address to new physical page with updated flags
+  uvmunmap(p->pagetable, va, 1, 0);
+  if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, flags) != 0){
+    uvmunmap(p->pagetable, va, 1, 0);
+    printf("cow: failed to remap virtual address\n");
+    return -1;
+  }
+  return 0;
+}
+
 // Copy from kernel to user.
 // Copy len bytes from src to virtual address dstva in a given page table.
 // Return 0 on success, -1 on error.
@@ -350,6 +407,9 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    // ensure the user address va0 is handled for copy-on-write.
+    cowhandler(va0);
+
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
