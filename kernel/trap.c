@@ -70,6 +70,7 @@ usertrap(void)
       p->alarmticks++;
       if (p->alarmticks >= p->alarminterval) {
         p->alarmticks = 0;
+        memmove(&p->pretrapframe, p->trapframe, sizeof(struct trapframe));
         p->trapframe->epc = p->alarmhandler;
       }
     }
