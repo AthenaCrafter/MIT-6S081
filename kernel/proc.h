@@ -107,6 +107,7 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   int alarm;
+  int alarmhandling;
   int alarminterval;
   uint64 alarmhandler;
   struct trapframe pretrapframe;

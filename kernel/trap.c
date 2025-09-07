@@ -68,10 +68,11 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     if (which_dev == 2) {
       p->alarmticks++;
-      if (p->alarmticks >= p->alarminterval) {
+      if (!p->alarmhandling && p->alarmticks >= p->alarminterval) {
         p->alarmticks = 0;
         memmove(&p->pretrapframe, p->trapframe, sizeof(struct trapframe));
         p->trapframe->epc = p->alarmhandler;
+        p->alarmhandling = 1;
       }
     }
   } else {
