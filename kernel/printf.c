@@ -132,3 +132,17 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void backtrace(void) {
+  uint64 fp, base, *p;
+
+  fp = r_fp(); // get the frame pointer of the currently executing function
+  base = PGROUNDUP(fp); // get the page-aligned base address of current stack frame
+
+  // fp grow from high to low, base higher than fp
+  while(fp < base) {
+    p = (uint64*)fp;
+    printf("%p\n", *(p-1));
+    fp = *(p-2);
+  }
+}
