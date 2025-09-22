@@ -21,7 +21,7 @@ To work with these labs:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/[your-username]/mit-6s081-labs.git
+   git clone https://github.com/AthenaCrafter/MIT-6S081.git
    ```
 
 2. Checkout a specific lab branch:
@@ -41,4 +41,4 @@ MIT 6.S081 is an introductory course to operating systems that:
 - Uses xv6, a simple Unix-like teaching operating system
 - Covers virtual memory, file systems, threads, context switches, kernels, interrupts, system calls, interprocess communication, and more
 
-Original course materials can be found on the https://pdos.csail.mit.edu/6.S081/2020/.
+Original course materials can be found on the https://pdos.csail.mit.edu/6.S081/2021/.
